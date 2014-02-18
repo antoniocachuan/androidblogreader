@@ -18,4 +18,6 @@
         <item>Ice Cream Sandwich</item>
         <item>Jelly Bean</item>            
     </string-array>
+    <string name="error_title">Oops! Sorry </string>
+    <string name="error_message">There was an error getting data from Internet</string>
 </resources>
