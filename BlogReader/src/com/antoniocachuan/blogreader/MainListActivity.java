@@ -7,6 +7,8 @@ import java.io.Reader;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.HashMap;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -15,30 +17,44 @@ import org.json.JSONObject;
 import android.app.AlertDialog;
 import android.app.ListActivity;
 import android.content.Context;
+import android.content.Intent;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
+import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.text.Html;
 import android.util.Log;
 import android.view.Menu;
+import android.view.View;
 import android.widget.ArrayAdapter;
+import android.widget.ListView;
+import android.widget.ProgressBar;
+import android.widget.SimpleAdapter;
+import android.widget.TextView;
 import android.widget.Toast;
 
 public class MainListActivity extends ListActivity {
 	
-	protected String[] mBlogPostTitles;
+	
 	public static final String TAG = MainListActivity.class.getSimpleName();
 	public static final int NUMBER_OF_POST = 20;
 	protected JSONObject mBlogData;
+	protected ProgressBar mProgressBar;
+	
+	private final String KEY_TITLE= "title";
+	private final String KEY_AUTHOR= "author";
+	
 	
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.activity_main_list);
 		
+		mProgressBar = (ProgressBar) findViewById(R.id.progressBar1);//para agregar el progressBar
 		
 		if(isNetworkAvailable()){
+			mProgressBar.setVisibility(View.VISIBLE);
 			GetBlogPostTask getBlogPostTask = new GetBlogPostTask();
 			getBlogPostTask.execute();		
 		}
@@ -54,6 +70,33 @@ public class MainListActivity extends ListActivity {
 		//Toast.makeText(this, getString(R.string.no_items), Toast.LENGTH_LONG).show();
 	}
 	
+	@Override
+	protected void onListItemClick(ListView l, View v, int position, long id) {
+		// TODO Auto-generated method stub
+		super.onListItemClick(l, v, position, id);
+		
+		try {
+			JSONArray jsonPosts = mBlogData.getJSONArray("posts");
+			JSONObject jsonPost;
+			jsonPost = jsonPosts.getJSONObject(position);
+			String blogUrl = 	jsonPost.getString("url");
+			
+			//Intent intent = new Intent(Intent.ACTION_VIEW);//PARA MOSTRAR LA PÁGINA EN EL BROWSER IMPLICIT INTENT
+			Intent intent = new Intent(this, BlogWebViewActivity.class);//Explicit intent
+			intent.setData(Uri.parse(blogUrl));
+			startActivity(intent);
+			
+		} catch (Exception e) {
+			
+			logException(e);
+		}
+		
+	}
+
+	private void logException(Exception e) {
+		Log.e("TAG", "Exception Caught", e);
+	}
+	
 	private boolean isNetworkAvailable() {// Ver si la aplicación tiene acceso a internet
 		ConnectivityManager manager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
 		NetworkInfo networkInfo = manager.getActiveNetworkInfo();
@@ -65,32 +108,49 @@ public class MainListActivity extends ListActivity {
 		return isAvailable;
 	}
 
-	private void updateList() {
+	private void handleBlogResponse() {
+		mProgressBar.setVisibility(View.INVISIBLE);
 		if(mBlogData == null){ // crear un dialogo
-			AlertDialog.Builder builder = new AlertDialog.Builder(this);
-			builder.setTitle(getString(R.string.error_title));//las variables error_title y error_message creadas en string.xml
-			builder.setMessage(getString(R.string.error_message));
-			builder.setPositiveButton(android.R.string.ok, null);
-			AlertDialog dialog = builder.create();
-			dialog.show();
+			updateDisplayForErrors();
 		}
 		else{
 			try {
 				JSONArray jsonPosts = mBlogData.getJSONArray("posts");
-				mBlogPostTitles = new String[jsonPosts.length()];
+				ArrayList<HashMap<String, String>> blogPosts=new ArrayList<HashMap<String,String>>();
 				for(int i = 0; i < jsonPosts.length(); i++){
 					JSONObject post = jsonPosts.getJSONObject(i);
-					String title= post.getString("title");
+					String title= post.getString(KEY_TITLE);
 					title=Html.fromHtml(title).toString();//para convertir caracteres especiales como &htrm etc
-					mBlogPostTitles[i]=title;					
+					String author= post.getString(KEY_AUTHOR);
+					author=Html.fromHtml(author).toString();
+					
+					HashMap<String, String> blogPost=new HashMap<String, String>();
+					blogPost.put(KEY_TITLE, title);
+					blogPost.put(KEY_AUTHOR, author);
+					
+					blogPosts.add(blogPost);
 				}
 				
-				ArrayAdapter <String> adapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, mBlogPostTitles);
+				String[] keys = {KEY_TITLE, KEY_AUTHOR};
+				int[] ids = { android.R.id.text1, android.R.id.text2};
+				SimpleAdapter adapter = new SimpleAdapter(this, blogPosts, android.R.layout.simple_list_item_2, keys, ids); 	
 				setListAdapter(adapter);
 			} catch (JSONException e) {
 				Log.d(TAG, "Exception caught oso!");
 			}
 		}
+	}
+
+	private void updateDisplayForErrors() {
+		AlertDialog.Builder builder = new AlertDialog.Builder(this);
+		builder.setTitle(getString(R.string.error_title));//las variables error_title y error_message creadas en string.xml
+		builder.setMessage(getString(R.string.error_message));
+		builder.setPositiveButton(android.R.string.ok, null);
+		AlertDialog dialog = builder.create();
+		dialog.show();
+		
+		TextView emptyTextView = (TextView) getListView().getEmptyView();
+		emptyTextView.setText(getString(R.string.no_items));
 	}
 	
 	private class GetBlogPostTask extends AsyncTask<Object, Void, JSONObject>{
@@ -120,13 +180,13 @@ public class MainListActivity extends ListActivity {
 				
 			}
 			catch(MalformedURLException e){
-				Log.e(TAG, "Exception caught: " + e);
+				logException(e);
 			}
 			catch(IOException e){
-				Log.e(TAG, "Exception caught: "+ e);
+				logException(e);
 			}
 			catch(Exception e){
-				
+				logException(e);
 			}
 			return jsonResponse;
 		}
@@ -134,18 +194,13 @@ public class MainListActivity extends ListActivity {
 		@Override
 		protected void onPostExecute(JSONObject result){
 			mBlogData = result;// para tenerlo en nuestra actividad traerlo del background
-			updateList();
+			handleBlogResponse();
 		}
 	}
 
 
 	
 
-	@Override
-	public boolean onCreateOptionsMenu(Menu menu) {
-		// Inflate the menu; this adds items to the action bar if it is present.
-		getMenuInflater().inflate(R.menu.main_list, menu);
-		return true;
-	}
+
 
 }
